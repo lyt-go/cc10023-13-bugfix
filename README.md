@@ -77,5 +77,33 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 特征字段修订链路
+
+同一个特征源字段只对应一个特征编号（`FEAT-S<源号>-F<字段序号>`）。字段回执与
+字段发现都走 `app/services/revision_support.py` 的修订登记：
+
+- 同一来源、同一规范字段、等价内容只登记一次；重复提交与清单换序不会新增草稿，
+  字段编号也不会因换序而变化。
+- 更正字段描述或计算规则关联同一来源字段，在原特征编号下形成一条待校验修订；
+  校验入口按特征编号只保留最新一条待校验修订。
+- 修订通过（`approve`）后才成为当前生效版；校验通过前下发的新计算任务仍使用旧的
+  生效修订。迟到的旧回执匹配到历史修订即忽略，不会新增修订、也不会把当前定义改回旧版。
+- 计算任务在下发时绑定当时的生效修订；历史任务保留原取数规则，重放沿用原绑定。
+
+| 接口 | 用途 |
+| --- | --- |
+| `POST /api/feature_source/{id}/discover` | 提交字段清单（支持换序、等价重复） |
+| `POST /api/feature_source/{id}/receipts` | 送入字段回执与更正（`receipt` / `corrections`） |
+| `GET /api/feature_source/{id}/fields` | 按来源查看字段清单与各修订状态 |
+| `GET /api/feature_define/pending` | 校验入口的待校验修订（可按来源/字段过滤） |
+| `GET /api/feature_define/detail/{id或特征编号}` | 定义详情：来源、各修订、当前生效版 |
+| `POST /api/feature_define/{id或特征编号}/approve` | 修订生效，旧生效版自动废弃 |
+| `POST /api/feature_define/push` | 按当前生效修订下发计算任务（可带 `input_value`） |
+| `POST /api/feature_compute/replay/{task_id}` | 按历史任务已绑定的修订重放 |
+| `GET /api/feature_compute/history` | 计算历史：来源标识、绑定修订、当前生效版本 |
+
+演练脚本：`backend/scripts/rehearse_revisions.py`；
+回归测试：`backend/tests/test_field_revisions.py`。
+
 领域：数据工程
 子方向：数据分析与数据应用

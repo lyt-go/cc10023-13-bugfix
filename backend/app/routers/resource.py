@@ -94,5 +94,14 @@ def create_entry(module: str, payload: EntryPayload) -> ActionResult:
 @router.post("/{module}/{entry_id}/actions", response_model=ActionResult)
 def run_action(module: str, entry_id: int, payload: ActionPayload) -> ActionResult:
     service = require_service(module)
+    # 领域服务若实现了 apply_action（例如修订生效的联动），优先交给它。
+    apply_action = getattr(service, "apply_action", None)
+    if callable(apply_action):
+        result = apply_action(entry_id, payload.action.strip())
+        return ActionResult(
+            ok=bool(result.get("ok")),
+            message=str(result.get("message") or ""),
+            entry=result.get("entry"),
+        )
     entry, message = service.run_action(entry_id, payload.action.strip())
     return ActionResult(ok=entry is not None, message=message, entry=entry)
